@@ -4,7 +4,7 @@ const apiKey = process.env.GEMINI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(apiKey);
 
 // Deklarasi Tools (Function Calling) yang membuat LLM jadi cerdas
-const tools = [
+const tools: any = [
   {
     functionDeclarations: [
       {
