@@ -43,7 +43,7 @@ export async function GET(req: Request) {
         } else {
             const start = Date.now();
             const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
             const result = await model.generateContent("Katakan 'OK' jika kamu aktif.");
             const text = result.response.text().trim();
             diagnostics.gemini = { 

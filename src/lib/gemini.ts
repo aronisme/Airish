@@ -49,6 +49,6 @@ const tools: any = [
 ];
 
 export const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash", // Menggunakan versi flash karena sangat cepat untuk API
+  model: "gemini-2.5-flash", // Menggunakan versi flash karena sangat cepat untuk API
   tools: tools
 });
