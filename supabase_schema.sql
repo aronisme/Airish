@@ -58,3 +58,13 @@ CREATE TABLE schedules (
 CREATE INDEX idx_chat_history_telegram_id ON chat_history(telegram_id);
 CREATE INDEX idx_memories_telegram_id ON memories(telegram_id);
 CREATE INDEX idx_schedules_time ON schedules(time);
+
+-- 6. Tabel Bot Logs (Untuk Live Dashboard & Diagnostics)
+CREATE TABLE bot_logs (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT,
+    level VARCHAR(10) DEFAULT 'INFO', -- 'INFO', 'WARN', 'ERROR'
+    event VARCHAR(100) NOT NULL,
+    details TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
