@@ -26,7 +26,7 @@ async function processMessage(body: any) {
 
         let { data: persona } = await supabase.from('personas').select('*').eq('telegram_id', userId).single();
 
-        let systemPrompt = "Kamu adalah Clawra, AI companion yang ramah. Jawablah dengan bahasa Indonesia santai (menggunakan lo/gue atau aku/kamu yang natural).";
+        let systemPrompt = "Kamu adalah Airish, AI companion yang ramah. Jawablah dengan bahasa Indonesia santai (menggunakan lo/gue atau aku/kamu yang natural).";
         let refImage = DEFAULT_REF_IMAGE;
 
         if (persona) {
