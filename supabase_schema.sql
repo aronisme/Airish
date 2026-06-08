@@ -68,3 +68,12 @@ CREATE TABLE bot_logs (
     details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- 7. Disable Row Level Security (RLS)
+-- Diperlukan agar Vercel backend bisa mengakses tabel menggunakan Anon Key tanpa user login session.
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE personas DISABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_history DISABLE ROW LEVEL SECURITY;
+ALTER TABLE memories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE schedules DISABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_logs DISABLE ROW LEVEL SECURITY;
