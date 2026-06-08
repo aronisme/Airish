@@ -1,8 +1,6 @@
 export async function queryMistral(systemPrompt: string, history: any[], userMessage: string) {
-    const apiKey = process.env.MISTRAL_API_KEY;
-    if (!apiKey) {
-        throw new Error("MISTRAL_API_KEY tidak ditemukan di environment variables!");
-    }
+    const url = process.env.MISTRAL_API_URL || "https://fatsproxyai.vercel.app/api/mistral";
+    const apiKey = process.env.MISTRAL_API_KEY || ""; // Opsional jika proxy sudah memiliki key terkonfigurasi di servernya
 
     // Ubah history dari format Supabase ke format standard Mistral/OpenAI
     const messages = [
@@ -60,12 +58,17 @@ export async function queryMistral(systemPrompt: string, history: any[], userMes
         }
     ];
 
-    const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    const headers: any = {
+        "Content-Type": "application/json"
+    };
+
+    if (apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(url, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
-        },
+        headers,
         body: JSON.stringify({
             model: "mistral-large-latest", // Model unggulan Mistral tercanggih
             messages,
@@ -76,7 +79,7 @@ export async function queryMistral(systemPrompt: string, history: any[], userMes
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Mistral API Error: ${response.status} - ${errText}`);
+        throw new Error(`Mistral Proxy API Error: ${response.status} - ${errText}`);
     }
 
     return response.json();

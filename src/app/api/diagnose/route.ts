@@ -33,38 +33,41 @@ export async function GET(req: Request) {
         diagnostics.supabase = { status: 'error', message: `Gagal query ke database: ${error.message}` };
     }
 
-    // 2. Diagnose Mistral
+    // 2. Diagnose Mistral (via Proxy)
     try {
-        const apiKey = process.env.MISTRAL_API_KEY;
-        if (!apiKey) {
-            diagnostics.mistral = { status: 'error', message: 'MISTRAL_API_KEY tidak dikonfigurasi di Env!' };
+        const proxyUrl = process.env.MISTRAL_API_URL || "https://fatsproxyai.vercel.app/api/mistral";
+        const apiKey = process.env.MISTRAL_API_KEY || "";
+        
+        const headers: any = {
+            "Content-Type": "application/json"
+        };
+        if (apiKey) {
+            headers["Authorization"] = `Bearer ${apiKey}`;
+        }
+
+        const start = Date.now();
+        const res = await fetch(proxyUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                model: "mistral-large-latest",
+                messages: [{ role: 'user', content: 'Say OK' }]
+            })
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content?.trim() || '';
+            diagnostics.mistral = { 
+                status: 'success', 
+                message: `Mistral via Proxy aktif. Response: "${text}" (${Date.now() - start}ms)` 
+            };
         } else {
-            const start = Date.now();
-            const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: "mistral-large-latest",
-                    messages: [{ role: 'user', content: 'Say OK' }]
-                })
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const text = data.choices?.[0]?.message?.content?.trim() || '';
-                diagnostics.mistral = { 
-                    status: 'success', 
-                    message: `Mistral aktif. Response: "${text}" (${Date.now() - start}ms)` 
-                };
-            } else {
-                const errText = await res.text();
-                diagnostics.mistral = { status: 'error', message: `Mistral API menolak request: ${errText}` };
-            }
+            const errText = await res.text();
+            diagnostics.mistral = { status: 'error', message: `Proxy menolak request (${res.status}): ${errText}` };
         }
     } catch (error: any) {
-        diagnostics.mistral = { status: 'error', message: `Gagal memanggil Mistral API: ${error.message}` };
+        diagnostics.mistral = { status: 'error', message: `Gagal memanggil Proxy Mistral: ${error.message}` };
     }
 
     // 3. Diagnose Fal.ai
