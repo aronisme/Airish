@@ -10,7 +10,7 @@ export async function generateSelfie(imageUrl: string, prompt: string): Promise<
         prompt: prompt,
         num_images: 1,
         output_format: "jpeg"
-      }
+      } as any
     });
     
     // @ts-ignore
