@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { geminiModel } from '@/lib/gemini';
+import { queryMistral } from '@/lib/mistral';
 import { generateSelfie } from '@/lib/fal';
 import { logEvent } from '@/lib/logger';
 
@@ -15,7 +15,7 @@ async function sendTelegram(method: string, payload: any) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-            cache: 'no-store' // Mencegah caching Next.js pada request Telegram API
+            cache: 'no-store'
         });
         const data = await response.json();
         await logEvent('INFO', `Telegram API Res (${method})`, JSON.stringify(data));
@@ -78,39 +78,31 @@ Jawablah dengan bahasa Indonesia santai sesuai dengan sifatmu.`;
         if (historyErr) {
             await logEvent('WARN', 'Chat History Read Fail', historyErr.message, userId);
         }
-            
-        const formattedHistory = (history || []).reverse().map(h => ({
-            role: h.role === 'user' ? 'user' : 'model',
-            parts: [{ text: h.content }]
-        }));
 
         // Simpan pesan user saat ini
         await supabase.from('chat_history').insert({ telegram_id: userId, role: 'user', content: text });
 
-        // 3. Panggil Gemini
-        await logEvent('INFO', 'Gemini Request', `Mengirim history (${formattedHistory.length} pesan) ke Gemini Flash.`, userId);
-        const chat = geminiModel.startChat({
-            history: formattedHistory,
-            systemInstruction: systemPrompt
-        });
-
-        const result = await chat.sendMessage(text);
-        const response = result.response;
-        const functionCalls = response.functionCalls();
+        // 3. Panggil Mistral
+        await logEvent('INFO', 'Mistral Request', `Mengirim history (${(history || []).length} pesan) ke Mistral Large.`, userId);
+        const mistralRes = await queryMistral(systemPrompt, history || [], text);
+        
+        const choice = mistralRes.choices?.[0];
+        const message = choice?.message;
 
         // 4. Handle Tools
-        if (functionCalls && functionCalls.length > 0) {
-            const call = functionCalls[0];
-            await logEvent('INFO', 'Gemini Tool Triggered', `Memanggil Tool: ${call.name} dengan args: ${JSON.stringify(call.args)}`, userId);
+        if (message?.tool_calls && message.tool_calls.length > 0) {
+            const toolCall = message.tool_calls[0];
+            const callName = toolCall.function.name;
+            const args = JSON.parse(toolCall.function.arguments);
             
-            if (call.name === 'generate_selfie') {
+            await logEvent('INFO', 'Mistral Tool Triggered', `Memanggil Tool: ${callName} dengan args: ${JSON.stringify(args)}`, userId);
+            
+            if (callName === 'generate_selfie') {
                 await sendTelegram('sendMessage', { chat_id: chatId, text: "Bentar ya, aku fotokan dulu... 📸" });
                 await sendTelegram('sendChatAction', { chat_id: chatId, action: 'upload_photo' });
 
-                // @ts-ignore
-                const context = call.args.context;
-                // @ts-ignore
-                const mode = call.args.mode;
+                const context = args.context;
+                const mode = args.mode;
 
                 const prompt = mode === 'direct' 
                     ? `a close-up selfie taken by herself at ${context}, direct eye contact with the camera, looking straight into the lens, eyes centered and clearly visible, not a mirror selfie, phone held at arm's length, face fully visible`
@@ -128,11 +120,9 @@ Jawablah dengan bahasa Indonesia santai sesuai dengan sifatmu.`;
                     await sendTelegram('sendMessage', { chat_id: chatId, text: "Aduh, kamera aku lagi error nih. Nanti aja ya fotonya." });
                 }
             } 
-            else if (call.name === 'save_memory') {
-                // @ts-ignore
-                const fact = call.args.fact;
-                // @ts-ignore
-                const date = call.args.event_date;
+            else if (callName === 'save_memory') {
+                const fact = args.fact;
+                const date = args.event_date;
 
                 const { error: memErr } = await supabase.from('memories').insert({ telegram_id: userId, fact: fact, event_date: date || null });
                 if (memErr) {
@@ -141,15 +131,49 @@ Jawablah dengan bahasa Indonesia santai sesuai dengan sifatmu.`;
                     await logEvent('INFO', 'Memory Saved', `Fakta disimpan: "${fact}"`, userId);
                 }
                 
-                const followupResult = await chat.sendMessage([{functionResponse: { name: 'save_memory', response: { success: true } }}]);
-                const replyText = followupResult.response.text();
-                
-                await sendTelegram('sendMessage', { chat_id: chatId, text: replyText });
-                await supabase.from('chat_history').insert({ telegram_id: userId, role: 'assistant', content: replyText });
+                // Panggil kembali Mistral dengan menyertakan hasil tool response
+                const toolResponseMessages = [
+                    { role: 'system', content: systemPrompt },
+                    ...(history || []).map((h: any) => ({
+                        role: h.role === 'user' ? 'user' : 'assistant',
+                        content: h.content
+                    })),
+                    { role: 'user', content: text },
+                    message, // Pesan asisten yang meminta pemanggilan tool
+                    {
+                        role: 'tool',
+                        name: 'save_memory',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify({ success: true })
+                    }
+                ];
+
+                const apiKey = process.env.MISTRAL_API_KEY;
+                const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "mistral-large-latest",
+                        messages: toolResponseMessages
+                    })
+                });
+
+                if (response.ok) {
+                    const followupData = await response.json();
+                    const replyText = followupData.choices?.[0]?.message?.content || "Memori telah disimpan!";
+                    await sendTelegram('sendMessage', { chat_id: chatId, text: replyText });
+                    await supabase.from('chat_history').insert({ telegram_id: userId, role: 'assistant', content: replyText });
+                } else {
+                    await sendTelegram('sendMessage', { chat_id: chatId, text: "Fakta sudah kuingat ya!" });
+                    await supabase.from('chat_history').insert({ telegram_id: userId, role: 'assistant', content: "Fakta sudah kuingat ya!" });
+                }
             }
         } else {
-            const replyText = response.text();
-            await logEvent('INFO', 'Gemini Text Reply', `Balasan teks: "${replyText}"`, userId);
+            const replyText = message?.content || "Maaf, aku tidak mengerti.";
+            await logEvent('INFO', 'Mistral Text Reply', `Balasan teks: "${replyText}"`, userId);
             await sendTelegram('sendMessage', { chat_id: chatId, text: replyText });
             await supabase.from('chat_history').insert({ telegram_id: userId, role: 'assistant', content: replyText });
         }
@@ -173,8 +197,6 @@ export async function POST(req: Request) {
         
         await logEvent('INFO', 'Webhook Invoked', `Payload update_id: ${body.update_id}`);
 
-        // PENTING: Jalankan secara synchronous untuk menjamin Vercel menunggu
-        // proses selesai dan mencetak seluruh log ke database tanpa terputus di tengah jalan.
         await processMessage(body);
 
         return NextResponse.json({ ok: true });

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +13,7 @@ export async function GET(req: Request) {
 
     const diagnostics: any = {
         supabase: { status: 'checking', message: '' },
-        gemini: { status: 'checking', message: '' },
+        mistral: { status: 'checking', message: '' },
         fal: { status: 'checking', message: '' },
         telegram: { status: 'checking', message: '' },
         logs: [],
@@ -24,7 +23,6 @@ export async function GET(req: Request) {
     // 1. Diagnose Supabase
     try {
         const start = Date.now();
-        // Coba query metadata
         const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
         if (error) throw error;
         diagnostics.supabase = { 
@@ -35,24 +33,38 @@ export async function GET(req: Request) {
         diagnostics.supabase = { status: 'error', message: `Gagal query ke database: ${error.message}` };
     }
 
-    // 2. Diagnose Gemini
+    // 2. Diagnose Mistral
     try {
-        const apiKey = process.env.GEMINI_API_KEY;
+        const apiKey = process.env.MISTRAL_API_KEY;
         if (!apiKey) {
-            diagnostics.gemini = { status: 'error', message: 'GEMINI_API_KEY tidak dikonfigurasi di Env!' };
+            diagnostics.mistral = { status: 'error', message: 'MISTRAL_API_KEY tidak dikonfigurasi di Env!' };
         } else {
             const start = Date.now();
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            const result = await model.generateContent("Katakan 'OK' jika kamu aktif.");
-            const text = result.response.text().trim();
-            diagnostics.gemini = { 
-                status: 'success', 
-                message: `Gemini aktif. Response: "${text}" (${Date.now() - start}ms)` 
-            };
+            const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: "mistral-large-latest",
+                    messages: [{ role: 'user', content: 'Say OK' }]
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const text = data.choices?.[0]?.message?.content?.trim() || '';
+                diagnostics.mistral = { 
+                    status: 'success', 
+                    message: `Mistral aktif. Response: "${text}" (${Date.now() - start}ms)` 
+                };
+            } else {
+                const errText = await res.text();
+                diagnostics.mistral = { status: 'error', message: `Mistral API menolak request: ${errText}` };
+            }
         }
     } catch (error: any) {
-        diagnostics.gemini = { status: 'error', message: `Gagal memanggil Gemini API: ${error.message}` };
+        diagnostics.mistral = { status: 'error', message: `Gagal memanggil Mistral API: ${error.message}` };
     }
 
     // 3. Diagnose Fal.ai

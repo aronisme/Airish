@@ -148,14 +148,14 @@ export default function Home() {
                 </p>
               </div>
 
-              {/* Gemini */}
+              {/* Mistral */}
               <div className="bg-zinc-900/40 backdrop-blur-md border border-zinc-800/50 rounded-2xl p-6 hover:border-zinc-700/50 transition-all">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-zinc-400 text-sm font-semibold tracking-wider">GEMINI AI</span>
-                  {getStatusBadge(diagnostics.gemini.status)}
+                  <span className="text-zinc-400 text-sm font-semibold tracking-wider">MISTRAL AI</span>
+                  {getStatusBadge(diagnostics.mistral.status)}
                 </div>
                 <p className="text-xs text-zinc-300 leading-relaxed font-mono">
-                  {diagnostics.gemini.message}
+                  {diagnostics.mistral.message}
                 </p>
               </div>
 
