@@ -3,7 +3,6 @@ import { supabase } from '@/lib/supabase';
 import { geminiModel } from '@/lib/gemini';
 import { generateSelfie } from '@/lib/fal';
 import { logEvent } from '@/lib/logger';
-import { after } from 'next/server';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
@@ -15,12 +14,11 @@ async function sendTelegram(method: string, payload: any) {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            cache: 'no-store' // Mencegah caching Next.js pada request Telegram API
         });
         const data = await response.json();
-        if (!response.ok) {
-            await logEvent('ERROR', 'Telegram API Error', `Method: ${method}, Status: ${response.status}, Res: ${JSON.stringify(data)}`);
-        }
+        await logEvent('INFO', `Telegram API Res (${method})`, JSON.stringify(data));
         return data;
     } catch (error: any) {
         await logEvent('ERROR', 'Telegram Fetch Exception', `Method: ${method}, Err: ${error.message}`);
@@ -173,12 +171,11 @@ export async function POST(req: Request) {
     try {
         const body = await req.json();
         
-        // Simpan log bahwa webhook menerima data
         await logEvent('INFO', 'Webhook Invoked', `Payload update_id: ${body.update_id}`);
 
-        after(() => {
-            processMessage(body);
-        });
+        // PENTING: Jalankan secara synchronous untuk menjamin Vercel menunggu
+        // proses selesai dan mencetak seluruh log ke database tanpa terputus di tengah jalan.
+        await processMessage(body);
 
         return NextResponse.json({ ok: true });
     } catch (error: any) {
